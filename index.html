@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>실시간 수업 자막</title>
+<style>
+  :root {
+    --bg: #000;
+    --fg: #fff;
+    --dim: #9aa0a6;
+    --e1: #ffd54a;   /* 강조 1단계 색 */
+    --e2: #ff6b5e;   /* 강조 2단계(강한 강조) 색 */
+    --font-size: 64px;
+  }
+  body.theme-light  { --bg: #fff; --fg: #111; --dim: #6b7075; --e1: #c76a00; --e2: #d00000; }
+  body.theme-yellow { --bg: #000; --fg: #ffe94d; --dim: #a89b3a; --e1: #7fe3ff; --e2: #ff6b5e; }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Noto Sans KR", "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", sans-serif;
+    overflow: hidden;
+  }
+
+  #captions {
+    position: absolute; inset: 0;
+    padding: 4vh 5vw 16vh;
+    overflow-y: auto;
+    font-size: var(--font-size);
+    line-height: 1.5;
+    font-weight: 700;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+    scroll-behavior: smooth;
+  }
+  #captions .line { margin: 0 0 0.5em; opacity: 0.55; transition: opacity .4s; }
+  #captions .line.recent { opacity: 1; }
+  #captions .interim .s0 { color: var(--dim); }
+
+  /* 강조 표시: 색 + 글자 크기 */
+  #captions .s1 { color: var(--e1); font-size: 1.18em; font-weight: 900; }
+  #captions .s2 { color: var(--e2); font-size: 1.4em;  font-weight: 900; }
+
+  #captions .hint {
+    color: var(--dim); font-weight: 400; font-size: 0.5em; line-height: 1.7;
+  }
+
+  #controls {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; align-items: center;
+    padding: 14px;
+    background: rgba(30,30,30,.94);
+    transition: opacity .4s, transform .4s;
+    z-index: 10;
+  }
+  #controls.hidden { opacity: 0; transform: translateY(100%); pointer-events: none; }
+  button {
+    font: inherit; font-size: 20px; font-weight: 700;
+    padding: 12px 20px; border-radius: 12px; border: 0;
+    background: #3c4043; color: #fff; cursor: pointer;
+    min-height: 52px;
+  }
+  button:active { filter: brightness(1.3); }
+  button.primary { background: #1a73e8; }
+  button.stop { background: #d93025; }
+  button.on { background: #188038; }
+  #status { color: #fff; font-size: 18px; min-width: 190px; text-align: center; }
+  #status .dot {
+    display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+    background: #777; margin-right: 8px; vertical-align: middle;
+  }
+  #status.on .dot { background: #34a853; animation: pulse 1.2s infinite; }
+  #status.err .dot { background: #d93025; }
+  @keyframes pulse { 50% { opacity: .3; } }
+
+  /* 강조 설정 패널 */
+  #panel {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: 96px; width: min(720px, 94vw);
+    background: rgba(25,25,25,.97); color: #fff;
+    border-radius: 16px; padding: 18px 22px; z-index: 12;
+    font-size: 18px; line-height: 1.5;
+    box-shadow: 0 6px 30px rgba(0,0,0,.6);
+  }
+  #panel.hidden { display: none; }
+  #panel h3 { margin: 0 0 10px; font-size: 22px; }
+  #panel .row { display: flex; align-items: center; gap: 12px; margin: 10px 0; flex-wrap: wrap; }
+  #panel .row label { min-width: 150px; }
+  #panel input[type=range] { flex: 1; min-width: 160px; height: 32px; }
+  #panel .val { min-width: 90px; text-align: right; font-variant-numeric: tabular-nums; }
+  #panel .note { color: #b0b5ba; font-size: 15px; margin-top: 8px; }
+  #meter { height: 16px; background: #333; border-radius: 8px; overflow: hidden; flex: 1; min-width: 160px; }
+  #meterBar { height: 100%; width: 0; background: #34a853; transition: width .08s, background .1s; }
+  #lvlText { min-width: 110px; text-align: right; font-weight: 700; }
+  #panel .sample { margin-top: 8px; font-size: 24px; }
+  #panel .sample .s1 { color: var(--e1); font-size: 1.18em; font-weight: 900; }
+  #panel .sample .s2 { color: var(--e2); font-size: 1.4em; font-weight: 900; }
+  #panel .sample { --e1: #ffd54a; --e2: #ff6b5e; }
+
+  #jump {
+    position: fixed; right: 24px; bottom: 100px; z-index: 11;
+    background: #1a73e8; display: none;
+  }
+  #unsupported {
+    display: none; position: absolute; inset: 0; z-index: 20;
+    background: var(--bg); color: var(--fg);
+    padding: 10vh 8vw; font-size: 36px; line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<div id="captions" aria-live="polite">
+  <div class="hint" id="hint">
+    아래 <b>시작</b> 버튼을 누르고, 마이크 사용을 <b>허용</b>해 주세요.<br>
+    선생님의 말씀이 이 화면에 자막으로 표시됩니다.<br>
+    목소리가 <b>커지거나 높아지면</b> 해당 부분이 색과 크기로 강조됩니다.<br>
+    화면을 위로 밀면 이전 자막을 다시 볼 수 있어요.
+  </div>
+</div>
+
+<button id="jump">▼ 최신 자막으로</button>
+
+<div id="panel" class="hidden">
+  <h3>목소리 강조 설정</h3>
+  <div class="row">
+    <button id="empToggle" class="on">강조 켜짐</button>
+    <div id="meter"><div id="meterBar"></div></div>
+    <span id="lvlText">-</span>
+  </div>
+  <div class="row">
+    <label for="volDelta">크기 기준</label>
+    <input type="range" id="volDelta" min="3" max="14" step="0.5" value="6">
+    <span class="val" id="volDeltaVal">평소+6dB</span>
+  </div>
+  <div class="row">
+    <label for="pitchDelta">높낮이 기준</label>
+    <input type="range" id="pitchDelta" min="2" max="10" step="0.5" value="4">
+    <span class="val" id="pitchDeltaVal">평소+4반음</span>
+  </div>
+  <div class="sample">평소 목소리 → <span class="s1">조금 강조</span> → <span class="s2">강한 강조</span></div>
+  <div class="note">
+    기준 값이 <b>작을수록 더 민감</b>하게 강조됩니다. 처음 약 2~3초간은 선생님의 평소 목소리를 학습하는 시간이라 강조가 표시되지 않습니다.
+    크기·높낮이 중 하나만 넘으면 "조금 강조", 둘 다 넘으면 "강한 강조"입니다.
+  </div>
+</div>
+
+<div id="controls">
+  <button id="toggle" class="primary">▶ 시작</button>
+  <span id="status"><span class="dot"></span><span id="statusText">대기 중</span></span>
+  <button id="empBtn">강조 설정</button>
+  <button id="smaller">가-</button>
+  <button id="bigger">가+</button>
+  <button id="theme">색상</button>
+  <button id="clear">지우기</button>
+  <button id="save">저장</button>
+  <button id="full">전체화면</button>
+</div>
+
+<div id="unsupported">
+  이 브라우저는 음성 인식을 지원하지 않습니다.<br>
+  <b>Chrome</b> 또는 <b>Edge</b> 브라우저로 열어 주세요.
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var captionsEl = document.getElementById("captions");
+  var controlsEl = document.getElementById("controls");
+  var toggleBtn = document.getElementById("toggle");
+  var statusEl = document.getElementById("status");
+  var statusText = document.getElementById("statusText");
+  var jumpBtn = document.getElementById("jump");
+  var hintEl = document.getElementById("hint");
+  var panelEl = document.getElementById("panel");
+
+  if (!SR) {
+    document.getElementById("unsupported").style.display = "block";
+    return;
+  }
+
+  var MAX_LINES = 400;
+  var running = false;
+  var recog = null;
+  var interimEl = null;
+  var interimText = "";
+  var interimSegs = [];
+  var fontSize = 64;
+  var autoScroll = true;
+  var wakeLock = null;
+  var hideTimer = null;
+  var transcript = []; // 저장용 (문장별 세그먼트 배열)
+
+  /* =====================================================
+   *  목소리 분석 (크기 + 높낮이)
+   * ===================================================== */
+  var emp = {
+    on: true,
+    volDelta: 6,      // 평소 목소리보다 몇 dB 커지면 강조
+    pitchDelta: 4     // 평소보다 몇 반음 높아지면 강조
+  };
+  var LOOK_NEAR = 300;   // ms: 인식 지연 보정 (현재 글자는 약 0.3~1.5초 전 소리에 해당한다고 가정)
+  var LOOK_FAR = 1500;
+
+  var audioCtx = null, analyser = null, micStream = null, audioTimer = null;
+  var tbuf = null;
+  var noiseDb = -60;
+  var volBase = null;      // 평소 목소리 크기(dB), 말하는 구간만 반영
+  var pitchBase = null;    // 평소 음높이(반음 단위)
+  var voicedCount = 0;
+  var pitchHist = [];
+  var frames = [];         // {t, level}
+  var live = { db: -90, dDb: 0, dSt: 0, level: 0, voiced: false };
+
+  function loadEmp() {
+    try {
+      var s = JSON.parse(localStorage.getItem("caption-emp") || "null");
+      if (s) {
+        if (typeof s.on === "boolean") emp.on = s.on;
+        if (s.volDelta >= 3 && s.volDelta <= 14) emp.volDelta = s.volDelta;
+        if (s.pitchDelta >= 2 && s.pitchDelta <= 10) emp.pitchDelta = s.pitchDelta;
+      }
+    } catch (e) {}
+  }
+  function saveEmp() {
+    try { localStorage.setItem("caption-emp", JSON.stringify(emp)); } catch (e) {}
+  }
+
+  function detectPitch(buf, sr) {
+    var n = buf.length;
+    var minLag = Math.floor(sr / 400), maxLag = Math.min(Math.floor(sr / 70), n - 1);
+    var e0 = 0, i, lag;
+    for (i = 0; i < n; i++) e0 += buf[i] * buf[i];
+    if (e0 < 1e-9) return 0;
+    var corr = new Float32Array(maxLag + 2);
+    var best = 0;
+    for (lag = minLag; lag <= maxLag; lag++) {
+      var s = 0, e1 = 0;
+      for (i = 0; i < n - lag; i++) {
+        s += buf[i] * buf[i + lag];
+        e1 += buf[i + lag] * buf[i + lag];
+      }
+      var c = s / Math.sqrt(e0 * e1 + 1e-12);
+      corr[lag] = c;
+      if (c > best) best = c;
+    }
+    if (best < 0.6) return 0; // 유성음(높낮이가 뚜렷한 소리)이 아님
+    // 옥타브 오류를 줄이기 위해 최댓값의 90% 이상인 첫 번째 봉우리를 선택
+    for (lag = minLag + 1; lag < maxLag; lag++) {
+      if (corr[lag] >= best * 0.9 && corr[lag] >= corr[lag - 1] && corr[lag] >= corr[lag + 1]) {
+        return sr / lag;
+      }
+    }
+    return 0;
+  }
+
+  function median(a) {
+    var b = a.slice().sort(function (x, y) { return x - y; });
+    return b[Math.floor(b.length / 2)];
+  }
+
+  function analyzeFrame() {
+    if (!analyser) return;
+    analyser.getFloatTimeDomainData(tbuf);
+    var sum = 0, i;
+    for (i = 0; i < tbuf.length; i++) sum += tbuf[i] * tbuf[i];
+    var rms = Math.sqrt(sum / tbuf.length);
+    var db = 20 * Math.log10(rms + 1e-9);
+
+    // 배경 소음 추적 (조용해지면 빨리 내려가고, 서서히 올라감)
+    if (db < noiseDb) noiseDb += (db - noiseDb) * 0.2;
+    else noiseDb += 0.003;
+    noiseDb = Math.max(-80, Math.min(-50, noiseDb));
+
+    var voiced = db > Math.max(-55, noiseDb + 10);
+    var now = performance.now();
+    var level = 0, dDb = 0, dSt = 0;
+
+    if (voiced) {
+      voicedCount++;
+      if (volBase === null) volBase = db;
+      dDb = db - volBase;
+
+      var f0 = detectPitch(tbuf, audioCtx.sampleRate);
+      var st = null;
+      if (f0 > 0) {
+        pitchHist.push(12 * Math.log(f0 / 100) / Math.LN2);
+        if (pitchHist.length > 3) pitchHist.shift();
+        st = median(pitchHist);
+        if (pitchBase === null) pitchBase = st;
+        dSt = st - pitchBase;
+      }
+
+      var warm = voicedCount > 40; // 약 2초 이상 말한 뒤부터 판정
+      if (warm && emp.on) {
+        var vE = dDb >= emp.volDelta;
+        var pE = st !== null && dSt >= emp.pitchDelta;
+        level = (vE ? 1 : 0) + (pE ? 1 : 0);
+      }
+
+      // 평소 목소리 기준선 갱신 (강조 구간은 천천히 반영해 기준이 끌려가지 않게 함)
+      var a = level > 0 ? 0.001 : 0.006;
+      volBase += (db - volBase) * a;
+      if (st !== null) pitchBase += (st - pitchBase) * a;
+    } else {
+      pitchHist = [];
+    }
+
+    frames.push({ t: now, level: level });
+    while (frames.length && frames[0].t < now - 4000) frames.shift();
+    live = { db: db, dDb: dDb, dSt: dSt, level: level, voiced: voiced };
+    updateMeter();
+  }
+
+  // 지금 막 화면에 나온 글자에 적용할 강조 단계
+  function currentLevel() {
+    if (!emp.on) return 0;
+    var now = performance.now();
+    var c1 = 0, c2 = 0;
+    for (var i = 0; i < frames.length; i++) {
+      var age = now - frames[i].t;
+      if (age >= LOOK_NEAR && age <= LOOK_FAR) {
+        if (frames[i].level >= 2) c2++;
+        if (frames[i].level >= 1) c1++;
+      }
+    }
+    if (c2 >= 2) return 2;
+    if (c1 >= 3) return 1;
+    return 0;
+  }
+
+  function startAudio() {
+    if (audioCtx || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+    navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    }).then(function (stream) {
+      if (!running) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+      micStream = stream;
+      var AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+      var src = audioCtx.createMediaStreamSource(stream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0;
+      src.connect(analyser);
+      tbuf = new Float32Array(analyser.fftSize);
+      audioTimer = setInterval(analyzeFrame, 50);
+    }).catch(function () {
+      setStatus("자막만 사용 중 (강조용 마이크 분석 불가)", "on");
+    });
+  }
+
+  function stopAudio() {
+    clearInterval(audioTimer); audioTimer = null;
+    if (micStream) { micStream.getTracks().forEach(function (t) { t.stop(); }); micStream = null; }
+    if (audioCtx) { try { audioCtx.close(); } catch (e) {} audioCtx = null; }
+    analyser = null;
+    frames = []; pitchHist = [];
+    voicedCount = 0; volBase = null; pitchBase = null;
+    live = { db: -90, dDb: 0, dSt: 0, level: 0, voiced: false };
+    updateMeter();
+  }
+
+  /* =====================================================
+   *  화면 표시 유틸
+   * ===================================================== */
+  function setStatus(text, cls) {
+    statusText.textContent = text;
+    statusEl.className = cls || "";
+  }
+
+  function nearBottom() {
+    return captionsEl.scrollHeight - captionsEl.scrollTop - captionsEl.clientHeight < 80;
+  }
+  function scrollToBottom() {
+    captionsEl.scrollTop = captionsEl.scrollHeight;
+    jumpBtn.style.display = "none";
+    autoScroll = true;
+  }
+  captionsEl.addEventListener("scroll", function () {
+    if (nearBottom()) { autoScroll = true; jumpBtn.style.display = "none"; }
+    else { autoScroll = false; jumpBtn.style.display = "block"; }
+  });
+  jumpBtn.addEventListener("click", scrollToBottom);
+
+  function markRecent() {
+    var lines = captionsEl.querySelectorAll(".line");
+    for (var i = 0; i < lines.length; i++) {
+      lines[i].classList.toggle("recent", i >= lines.length - 3);
+    }
+  }
+
+  // 세그먼트: [{t: "글자들", l: 0|1|2}]
+  function mergeSegs(segs) {
+    var out = [];
+    segs.forEach(function (s) {
+      if (!s.t) return;
+      var last = out[out.length - 1];
+      if (last && last.l === s.l) last.t += s.t;
+      else out.push({ t: s.t, l: s.l });
+    });
+    return out;
+  }
+
+  // 이전 글자와 겹치는 앞부분은 기존 강조 단계를 유지하고, 새로 붙거나 바뀐 뒷부분에만 현재 단계를 적용
+  function assign(prevSegs, prevText, newText, level) {
+    var p = 0, m = Math.min(prevText.length, newText.length);
+    while (p < m && prevText.charAt(p) === newText.charAt(p)) p++;
+    var out = [], used = 0;
+    for (var i = 0; i < prevSegs.length && used < p; i++) {
+      var take = Math.min(prevSegs[i].t.length, p - used);
+      out.push({ t: prevSegs[i].t.slice(0, take), l: prevSegs[i].l });
+      used += take;
+    }
+    if (newText.length > p) out.push({ t: newText.slice(p), l: level });
+    return mergeSegs(out);
+  }
+
+  function trimSegs(segs) {
+    var out = segs.map(function (s) { return { t: s.t, l: s.l }; });
+    while (out.length && !out[0].t.replace(/^\s+/, "")) out.shift();
+    if (out.length) out[0].t = out[0].t.replace(/^\s+/, "");
+    while (out.length && !out[out.length - 1].t.replace(/\s+$/, "")) out.pop();
+    if (out.length) out[out.length - 1].t = out[out.length - 1].t.replace(/\s+$/, "");
+    return out;
+  }
+
+  function renderSegs(el, segs) {
+    el.textContent = "";
+    segs.forEach(function (s) {
+      var sp = document.createElement("span");
+      sp.className = "s" + s.l;
+      sp.textContent = s.t;
+      el.appendChild(sp);
+    });
+  }
+
+  function addFinalLine(segs) {
+    segs = trimSegs(segs);
+    if (!segs.length) return;
+    if (hintEl) { hintEl.remove(); hintEl = null; }
+    var d = document.createElement("div");
+    d.className = "line";
+    renderSegs(d, segs);
+    if (interimEl && interimEl.parentNode) captionsEl.insertBefore(d, interimEl);
+    else captionsEl.appendChild(d);
+    transcript.push(segs);
+    var lines = captionsEl.querySelectorAll(".line");
+    while (lines.length > MAX_LINES) { lines[0].remove(); lines = captionsEl.querySelectorAll(".line"); }
+    markRecent();
+  }
+
+  function showInterim() {
+    var segs = trimSegs(interimSegs);
+    if (!segs.length) {
+      if (interimEl) { interimEl.remove(); interimEl = null; }
+      return;
+    }
+    if (hintEl) { hintEl.remove(); hintEl = null; }
+    if (!interimEl) {
+      interimEl = document.createElement("div");
+      interimEl.className = "line interim recent";
+      captionsEl.appendChild(interimEl);
+    }
+    renderSegs(interimEl, segs);
+  }
+
+  function clearInterim() {
+    interimText = ""; interimSegs = [];
+    if (interimEl) { interimEl.remove(); interimEl = null; }
+  }
+
+  /* =====================================================
+   *  음성 인식 (글자 변환)
+   * ===================================================== */
+  function createRecognition() {
+    var r = new SR();
+    r.lang = "ko-KR";
+    r.continuous = true;
+    r.interimResults = true;
+    r.maxAlternatives = 1;
+
+    r.onstart = function () { setStatus("듣는 중", "on"); };
+
+    r.onresult = function (e) {
+      var lvl = currentLevel();
+      var pending = "";
+      for (var i = e.resultIndex; i < e.results.length; i++) {
+        var res = e.results[i];
+        var txt = res[0].transcript;
+        if (res.isFinal) {
+          var fin = assign(interimSegs, interimText, txt, lvl);
+          interimText = ""; interimSegs = [];
+          if (interimEl) { interimEl.remove(); interimEl = null; }
+          addFinalLine(fin);
+        } else {
+          pending += txt;
+        }
+      }
+      if (pending) {
+        interimSegs = assign(interimSegs, interimText, pending, lvl);
+        interimText = pending;
+      } else {
+        interimSegs = []; interimText = "";
+      }
+      showInterim();
+      if (autoScroll) scrollToBottom();
+    };
+
+    r.onerror = function (e) {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        running = false;
+        stopAudio();
+        setStatus("마이크 권한이 필요합니다", "err");
+        toggleBtn.textContent = "▶ 시작";
+        toggleBtn.className = "primary";
+        showControls(true);
+      } else if (e.error === "network") {
+        setStatus("인터넷 연결을 확인하세요", "err");
+      } else if (e.error === "audio-capture") {
+        setStatus("마이크를 찾을 수 없습니다", "err");
+      }
+      // no-speech, aborted 는 자동 재시작으로 처리
+    };
+
+    r.onend = function () {
+      // 끊기기 전 임시 글자는 확정 처리하지 않고 정리
+      clearInterim();
+      if (running) {
+        setTimeout(function () {
+          if (!running) return;
+          try { r.start(); } catch (err) {}
+        }, 300);
+      } else {
+        setStatus("멈춤", "");
+      }
+    };
+    return r;
+  }
+
+  function start() {
+    if (running) return;
+    recog = createRecognition();
+    running = true;
+    try { recog.start(); } catch (err) {}
+    startAudio();
+    toggleBtn.textContent = "■ 멈춤";
+    toggleBtn.className = "stop";
+    requestWakeLock();
+    scheduleHide();
+  }
+
+  function stop() {
+    running = false;
+    if (recog) { try { recog.stop(); } catch (err) {} }
+    stopAudio();
+    toggleBtn.textContent = "▶ 시작";
+    toggleBtn.className = "primary";
+    releaseWakeLock();
+    showControls(true);
+  }
+
+  toggleBtn.addEventListener("click", function () { running ? stop() : start(); });
+
+  /* ---------- 화면 꺼짐 방지 ---------- */
+  function requestWakeLock() {
+    if (!("wakeLock" in navigator)) return;
+    navigator.wakeLock.request("screen").then(function (l) { wakeLock = l; }).catch(function () {});
+  }
+  function releaseWakeLock() {
+    if (wakeLock) { wakeLock.release().catch(function () {}); wakeLock = null; }
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && running) requestWakeLock();
+  });
+
+  /* ---------- 컨트롤 자동 숨김 ---------- */
+  function showControls(keep) {
+    controlsEl.classList.remove("hidden");
+    clearTimeout(hideTimer);
+    if (!keep) scheduleHide();
+  }
+  function scheduleHide() {
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(function () {
+      if (running && panelEl.classList.contains("hidden")) controlsEl.classList.add("hidden");
+    }, 5000);
+  }
+  ["pointerdown", "mousemove", "touchstart"].forEach(function (ev) {
+    document.addEventListener(ev, function () { showControls(false); }, { passive: true });
+  });
+
+  /* ---------- 글자 크기 / 색상 ---------- */
+  function applyFont() {
+    document.documentElement.style.setProperty("--font-size", fontSize + "px");
+    try { localStorage.setItem("caption-font", String(fontSize)); } catch (e) {}
+  }
+  document.getElementById("bigger").addEventListener("click", function () {
+    fontSize = Math.min(200, fontSize + 8); applyFont();
+    if (autoScroll) scrollToBottom();
+  });
+  document.getElementById("smaller").addEventListener("click", function () {
+    fontSize = Math.max(24, fontSize - 8); applyFont();
+    if (autoScroll) scrollToBottom();
+  });
+
+  var themes = ["theme-dark", "theme-yellow", "theme-light"];
+  var themeIdx = 0;
+  function applyTheme() {
+    document.body.className = themes[themeIdx];
+    try { localStorage.setItem("caption-theme", String(themeIdx)); } catch (e) {}
+  }
+  document.getElementById("theme").addEventListener("click", function () {
+    themeIdx = (themeIdx + 1) % themes.length; applyTheme();
+  });
+
+  try {
+    var f = parseInt(localStorage.getItem("caption-font"), 10);
+    if (f >= 24 && f <= 200) fontSize = f;
+    var t = parseInt(localStorage.getItem("caption-theme"), 10);
+    if (t >= 0 && t < themes.length) themeIdx = t;
+  } catch (e) {}
+  applyFont(); applyTheme();
+
+  /* ---------- 강조 설정 패널 ---------- */
+  var empToggle = document.getElementById("empToggle");
+  var volDeltaEl = document.getElementById("volDelta");
+  var pitchDeltaEl = document.getElementById("pitchDelta");
+  var volDeltaVal = document.getElementById("volDeltaVal");
+  var pitchDeltaVal = document.getElementById("pitchDeltaVal");
+  var meterBar = document.getElementById("meterBar");
+  var lvlText = document.getElementById("lvlText");
+
+  function syncEmpUI() {
+    empToggle.textContent = emp.on ? "강조 켜짐" : "강조 꺼짐";
+    empToggle.className = emp.on ? "on" : "";
+    volDeltaEl.value = emp.volDelta;
+    pitchDeltaEl.value = emp.pitchDelta;
+    volDeltaVal.textContent = "평소+" + emp.volDelta + "dB";
+    pitchDeltaVal.textContent = "평소+" + emp.pitchDelta + "반음";
+  }
+  loadEmp(); syncEmpUI();
+
+  empToggle.addEventListener("click", function () { emp.on = !emp.on; syncEmpUI(); saveEmp(); });
+  volDeltaEl.addEventListener("input", function () { emp.volDelta = parseFloat(volDeltaEl.value); syncEmpUI(); saveEmp(); });
+  pitchDeltaEl.addEventListener("input", function () { emp.pitchDelta = parseFloat(pitchDeltaEl.value); syncEmpUI(); saveEmp(); });
+
+  document.getElementById("empBtn").addEventListener("click", function () {
+    panelEl.classList.toggle("hidden");
+    showControls(!panelEl.classList.contains("hidden"));
+  });
+
+  function updateMeter() {
+    if (panelEl.classList.contains("hidden")) return;
+    var pct = Math.max(0, Math.min(100, (live.db + 60) / 60 * 100));
+    meterBar.style.width = pct + "%";
+    var names = ["보통", "조금 강조", "강한 강조"];
+    var colors = ["#34a853", "#ffd54a", "#ff6b5e"];
+    meterBar.style.background = colors[live.level];
+    if (!running) lvlText.textContent = "대기 중";
+    else if (!emp.on) lvlText.textContent = "꺼짐";
+    else if (voicedCount <= 40) lvlText.textContent = "학습 중…";
+    else lvlText.textContent = names[live.level];
+  }
+
+  /* ---------- 지우기 / 저장 / 전체화면 ---------- */
+  document.getElementById("clear").addEventListener("click", function () {
+    if (!confirm("화면의 자막을 모두 지울까요?")) return;
+    captionsEl.innerHTML = "";
+    clearInterim();
+    transcript = [];
+  });
+
+  document.getElementById("save").addEventListener("click", function () {
+    if (!transcript.length) { alert("저장할 자막이 없습니다."); return; }
+    // 강조된 부분은 【 】로 표시. UTF-8 BOM을 붙여 메모장 등에서도 한글이 깨지지 않게 함
+    var text = transcript.map(function (segs) {
+      return segs.map(function (s) { return s.l > 0 ? "【" + s.t + "】" : s.t; }).join("");
+    }).join("\n");
+    var blob = new Blob(["\uFEFF" + text], { type: "text/plain;charset=utf-8" });
+    var a = document.createElement("a");
+    var d = new Date();
+    var p = function (n) { return String(n).padStart(2, "0"); };
+    a.href = URL.createObjectURL(blob);
+    a.download = "수업자막_" + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) +
+                 "_" + p(d.getHours()) + p(d.getMinutes()) + ".txt";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  });
+
+  document.getElementById("full").addEventListener("click", function () {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(function () {});
+  });
+})();
+</script>
+</body>
+</html>
