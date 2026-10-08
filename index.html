@@ -38,6 +38,8 @@
   }
   #captions .line { margin: 0 0 0.5em; opacity: 0.55; transition: opacity .4s; }
   #captions .line.recent { opacity: 1; }
+  #captions .line:not(.interim) { cursor: pointer; }
+  #captions .line.edited { text-decoration: underline dotted rgba(127,127,127,.6); text-underline-offset: 0.18em; }
   #captions .interim .s0 { color: var(--dim); }
 
   /* 강조 표시: 색 + 글자 크기 */
@@ -76,22 +78,29 @@
   #status.err .dot { background: #d93025; }
   @keyframes pulse { 50% { opacity: .3; } }
 
-  /* 강조 설정 패널 */
-  #panel {
+  /* 설정 패널 공통 */
+  .panel {
     position: fixed; left: 50%; transform: translateX(-50%);
-    bottom: 96px; width: min(720px, 94vw);
+    bottom: 96px; width: min(760px, 94vw);
+    max-height: calc(100vh - 120px); overflow-y: auto;
     background: rgba(25,25,25,.97); color: #fff;
     border-radius: 16px; padding: 18px 22px; z-index: 12;
     font-size: 18px; line-height: 1.5;
     box-shadow: 0 6px 30px rgba(0,0,0,.6);
   }
-  #panel.hidden { display: none; }
-  #panel h3 { margin: 0 0 10px; font-size: 22px; }
-  #panel .row { display: flex; align-items: center; gap: 12px; margin: 10px 0; flex-wrap: wrap; }
-  #panel .row label { min-width: 150px; }
-  #panel input[type=range] { flex: 1; min-width: 160px; height: 32px; }
-  #panel .val { min-width: 90px; text-align: right; font-variant-numeric: tabular-nums; }
-  #panel .note { color: #b0b5ba; font-size: 15px; margin-top: 8px; }
+  .panel.hidden { display: none; }
+  .panel h3 { margin: 0 0 10px; font-size: 22px; }
+  .panel h4 { margin: 16px 0 6px; font-size: 19px; }
+  .panel .row { display: flex; align-items: center; gap: 12px; margin: 10px 0; flex-wrap: wrap; }
+  .panel .row label { min-width: 150px; }
+  .panel input[type=range] { flex: 1; min-width: 160px; height: 32px; }
+  .panel .val { min-width: 90px; text-align: right; font-variant-numeric: tabular-nums; }
+  .panel .note { color: #b0b5ba; font-size: 15px; margin-top: 8px; }
+  .panel textarea {
+    width: 100%; min-height: 200px; resize: vertical;
+    font: inherit; font-size: 20px; line-height: 1.5;
+    background: #111; color: #fff; border: 1px solid #555; border-radius: 10px; padding: 10px 12px;
+  }
   #meter { height: 16px; background: #333; border-radius: 8px; overflow: hidden; flex: 1; min-width: 160px; }
   #meterBar { height: 100%; width: 0; background: #34a853; transition: width .08s, background .1s; }
   #lvlText { min-width: 110px; text-align: right; font-weight: 700; }
@@ -99,6 +108,32 @@
   #panel .sample .s1 { color: var(--e1); font-size: 1.18em; font-weight: 900; }
   #panel .sample .s2 { color: var(--e2); font-size: 1.4em; font-weight: 900; }
   #panel .sample { --e1: #ffd54a; --e2: #ff6b5e; }
+  #dictCount { color: #b0b5ba; font-size: 16px; }
+
+  /* 자막 고치기 창 */
+  #editModal {
+    position: fixed; inset: 0; z-index: 30;
+    background: rgba(0,0,0,.6);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #editModal.hidden { display: none; }
+  #editModal .box {
+    width: min(1100px, 94vw);
+    background: #1e1e1e; color: #fff; border-radius: 18px;
+    padding: 22px 26px; box-shadow: 0 10px 40px rgba(0,0,0,.7);
+    font-size: 20px;
+  }
+  #editModal h3 { margin: 0 0 12px; font-size: 24px; }
+  #editText {
+    width: 100%; min-height: 140px; resize: vertical;
+    font: inherit; font-size: 34px; font-weight: 700; line-height: 1.45;
+    background: #000; color: #fff; border: 2px solid #1a73e8; border-radius: 12px; padding: 12px 16px;
+  }
+  #editModal .learn { display: flex; gap: 12px; align-items: flex-start; margin: 14px 0 4px; }
+  #editModal .learn input { width: 28px; height: 28px; margin-top: 2px; flex: none; }
+  #learnText.off { color: #9aa0a6; }
+  #learnText b { color: #ffd54a; }
+  #editModal .btns { display: flex; gap: 12px; justify-content: flex-end; margin-top: 16px; }
 
   #jump {
     position: fixed; right: 24px; bottom: 100px; z-index: 11;
@@ -118,13 +153,15 @@
     아래 <b>시작</b> 버튼을 누르고, 마이크 사용을 <b>허용</b>해 주세요.<br>
     선생님의 말씀이 이 화면에 자막으로 표시됩니다.<br>
     목소리가 <b>커지거나 높아지면</b> 해당 부분이 색과 크기로 강조됩니다.<br>
+    자막이 틀렸으면 그 줄을 <b>눌러서 고칠 수</b> 있어요.<br>
     화면을 위로 밀면 이전 자막을 다시 볼 수 있어요.
   </div>
 </div>
 
 <button id="jump">▼ 최신 자막으로</button>
 
-<div id="panel" class="hidden">
+<!-- 목소리 강조 설정 -->
+<div id="panel" class="panel hidden">
   <h3>목소리 강조 설정</h3>
   <div class="row">
     <button id="empToggle" class="on">강조 켜짐</button>
@@ -148,10 +185,49 @@
   </div>
 </div>
 
+<!-- 자막 다듬기 (용어 사전 + 문장 나누기) -->
+<div id="dictPanel" class="panel hidden">
+  <h3>자막 다듬기</h3>
+  <div class="row">
+    <button id="punctToggle" class="on">문장 나누기·문장부호 켜짐</button>
+  </div>
+  <div class="note" style="margin-top:0">
+    "~습니다", "~어요", "~했다" 같은 문장 끝을 찾아 마침표를 붙이고 줄을 나눕니다.
+    "~습니까", "~할까요" 같은 말에는 물음표를 붙입니다. 규칙으로 판단하므로 가끔 틀릴 수 있습니다.
+  </div>
+
+  <h4>용어 사전 <span id="dictCount"></span></h4>
+  <textarea id="dictText" spellcheck="false" placeholder="# 한 줄에 하나씩 적어 주세요&#10;광합성&#10;이차방정식&#10;미토 콘드리아 => 미토콘드리아&#10;관 합성 => 광합성"></textarea>
+  <div class="note">
+    · <b>용어만 적으면</b> (예: <code>광합성</code>) 자막에 "광 합성"처럼 띄어 써서 나오면 붙여 줍니다. 3글자 이상 용어에만 적용됩니다.<br>
+    · <b>틀린말 =&gt; 바른말</b> (예: <code>관 합성 =&gt; 광합성</code>) 형식이면 틀린 표현을 바른 표현으로 바꿉니다. 띄어쓰기가 달라도 찾아냅니다.<br>
+    · <code>#</code>으로 시작하는 줄은 메모로 처리됩니다. 단원 용어 목록을 한 번에 붙여 넣어도 됩니다.<br>
+    · 자막 줄을 눌러 고치면, 고친 내용이 여기에 자동으로 추가됩니다.<br>
+    · 사전은 <b>이 브라우저에만</b> 저장됩니다. 다른 컴퓨터에서 쓰려면 내용을 복사해 붙여 넣어 주세요.
+  </div>
+</div>
+
+<!-- 자막 고치기 창 -->
+<div id="editModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+  <div class="box">
+    <h3 id="editTitle">자막 고치기</h3>
+    <textarea id="editText" spellcheck="false"></textarea>
+    <label class="learn">
+      <input type="checkbox" id="learnChk" checked>
+      <span id="learnText"></span>
+    </label>
+    <div class="btns">
+      <button id="editCancel">취소</button>
+      <button id="editSave" class="primary">저장</button>
+    </div>
+  </div>
+</div>
+
 <div id="controls">
   <button id="toggle" class="primary">▶ 시작</button>
   <span id="status"><span class="dot"></span><span id="statusText">대기 중</span></span>
   <button id="empBtn">강조 설정</button>
+  <button id="dictBtn">자막 다듬기</button>
   <button id="smaller">가-</button>
   <button id="bigger">가+</button>
   <button id="theme">색상</button>
@@ -178,6 +254,8 @@
   var jumpBtn = document.getElementById("jump");
   var hintEl = document.getElementById("hint");
   var panelEl = document.getElementById("panel");
+  var dictPanel = document.getElementById("dictPanel");
+  var editModal = document.getElementById("editModal");
 
   if (!SR) {
     document.getElementById("unsupported").style.display = "block";
@@ -194,7 +272,138 @@
   var autoScroll = true;
   var wakeLock = null;
   var hideTimer = null;
-  var transcript = []; // 저장용 (문장별 세그먼트 배열)
+  var transcript = []; // 저장용: [{segs: [...], edited: bool}]
+
+  /* =====================================================
+   *  자막 다듬기: 용어 사전 + 문장 나누기·문장부호
+   * ===================================================== */
+  var polish = { punct: true, dict: "" };
+  var dictRules = [];   // [{re: RegExp, to: "바른말"}]
+
+  function loadPolish() {
+    try {
+      var s = JSON.parse(localStorage.getItem("caption-polish") || "null");
+      if (s) {
+        if (typeof s.punct === "boolean") polish.punct = s.punct;
+        if (typeof s.dict === "string") polish.dict = s.dict;
+      }
+    } catch (e) {}
+  }
+  function savePolish() {
+    try { localStorage.setItem("caption-polish", JSON.stringify(polish)); } catch (e) {}
+  }
+
+  function escapeRe(ch) { return ch.replace(/[.*+?^${}()|[\]\\\/]/g, "\\$&"); }
+
+  // 띄어쓰기를 무시하고 찾는 정규식 (예: "광합성" → 광\s*합\s*성)
+  function flexRe(s) {
+    var chars = Array.from(s.replace(/\s+/g, ""));
+    if (!chars.length) return null;
+    return new RegExp(chars.map(escapeRe).join("\\s*"), "g");
+  }
+
+  function parseRuleLine(line) {
+    var m = line.match(/^(.*?)\s*(=>|->|→)\s*(.*)$/);
+    if (m) return { from: m[1].trim(), to: m[3].trim(), arrow: true };
+    return { from: line.trim(), to: line.trim(), arrow: false };
+  }
+
+  function buildDict() {
+    var rules = [];
+    polish.dict.split(/\r?\n/).forEach(function (raw) {
+      var line = raw.trim();
+      if (!line || line.charAt(0) === "#") return;
+      var r = parseRuleLine(line);
+      var core = r.from.replace(/\s+/g, "");
+      if (!core) return;
+      if (!r.arrow && Array.from(core).length < 3) return; // 짧은 용어는 오작동 위험이 커서 제외
+      var re = flexRe(r.from);
+      if (re) rules.push({ re: re, to: r.to, len: core.length, arrow: r.arrow });
+    });
+    // "틀린말 => 바른말" 규칙을 먼저, 긴 것부터 적용
+    rules.sort(function (a, b) {
+      if (a.arrow !== b.arrow) return a.arrow ? -1 : 1;
+      return b.len - a.len;
+    });
+    dictRules = rules;
+    var c = document.getElementById("dictCount");
+    if (c) c.textContent = rules.length ? "(적용 중인 규칙 " + rules.length + "개)" : "";
+  }
+
+  function applyDict(text) {
+    for (var i = 0; i < dictRules.length; i++) {
+      dictRules[i].re.lastIndex = 0;
+      text = text.replace(dictRules[i].re, dictRules[i].to);
+    }
+    return text;
+  }
+
+  // 한글 음절의 받침 번호 (없으면 0, 한글이 아니면 -1)
+  function jong(ch) {
+    if (!ch) return -1;
+    var c = ch.charCodeAt(0) - 0xAC00;
+    if (c < 0 || c > 11171) return -1;
+    return c % 28;
+  }
+  var J_N = 4, J_B = 17, J_SS = 20, J_BS = 18, J_L = 8; // ㄴ, ㅂ, ㅆ, ㅄ, ㄹ
+
+  // "~요"로 끝나지만 문장 끝이 아닌 낱말
+  var YO_EXC = ["필요", "중요", "주요", "수요", "개요", "소요", "강요", "동요", "요요", "월요", "화요", "목요", "금요", "토요", "일요"];
+
+  // 낱말이 문장 끝맺음이면 붙일 문장부호를 돌려줌
+  function endingMark(w) {
+    var ch = Array.from(w);
+    var n = ch.length;
+    if (n < 2) return "";
+    var last = ch[n - 1], prev = ch[n - 2], prev2 = n >= 3 ? ch[n - 3] : "";
+
+    // 의문형
+    if (last === "까" && prev === "니" && jong(prev2) === J_B) return "?";   // 습니까, 합니까, 입니까
+    if (last === "요" && prev === "까") return "?";                          // ~할까요, ~볼까요
+    if (last === "까" && jong(prev) === J_L) return "?";                     // ~할까, ~을까
+    if (last === "냐") return "?";                                            // ~했냐, ~뭐냐
+
+    // 평서형
+    if (last === "다" && prev === "니" && jong(prev2) === J_B) return ".";   // 습니다, 합니다, 입니다
+    if (last === "다" && prev === "시" && jong(prev2) === J_B) return ".";   // 합시다, 봅시다
+    if (last === "다") {
+      var jp = jong(prev);
+      if (jp === J_N || jp === J_SS || jp === J_BS) return ".";             // 한다, 했다, 있다, 없다
+      if (prev === "같") return ".";
+      if (prev === "이" && n >= 3) return ".";                               // ~것이다
+    }
+    if (last === "요") {
+      for (var i = 0; i < YO_EXC.length; i++) {
+        if (w.slice(-YO_EXC[i].length) === YO_EXC[i]) return "";   // 필요, 불필요, 중요 …
+      }
+      return ".";
+    }
+    if (last === "죠") return ".";
+    return "";
+  }
+
+  // 문장 끝 낱말에 문장부호 붙이기 (isFinal이 아니면 아직 말하는 중인 마지막 낱말은 건드리지 않음)
+  function punctuate(text, isFinal) {
+    if (!polish.punct) return text;
+    var parts = text.split(/(\s+)/);
+    var lastWord = -1;
+    for (var i = parts.length - 1; i >= 0; i--) {
+      if (parts[i] && !/^\s+$/.test(parts[i])) { lastWord = i; break; }
+    }
+    for (var j = 0; j < parts.length; j++) {
+      var w = parts[j];
+      if (!w || /^\s+$/.test(w)) continue;
+      if (j === lastWord && !isFinal) continue;
+      if (/[.?!,~…:;]$/.test(w)) continue;
+      var mark = endingMark(w);
+      if (mark) parts[j] = w + mark;
+    }
+    return parts.join("");
+  }
+
+  function processText(text, isFinal) {
+    return punctuate(applyDict(text), isFinal);
+  }
 
   /* =====================================================
    *  목소리 분석 (크기 + 높낮이)
@@ -396,6 +605,10 @@
   }
 
   // 세그먼트: [{t: "글자들", l: 0|1|2}]
+  function segsText(segs) {
+    return segs.map(function (s) { return s.t; }).join("");
+  }
+
   function mergeSegs(segs) {
     var out = [];
     segs.forEach(function (s) {
@@ -407,16 +620,32 @@
     return out;
   }
 
+  // 세그먼트에서 [start, end) 글자 범위만 잘라내기 (강조 단계 유지)
+  function sliceSegs(segs, start, end) {
+    var out = [], pos = 0;
+    for (var i = 0; i < segs.length; i++) {
+      var s = segs[i], a = pos, b = pos + s.t.length;
+      var from = Math.max(a, start), to = Math.min(b, end);
+      if (from < to) out.push({ t: s.t.slice(from - a, to - a), l: s.l });
+      pos = b;
+    }
+    return out;
+  }
+
+  function levelAt(segs, idx) {
+    var pos = 0;
+    for (var i = 0; i < segs.length; i++) {
+      if (idx < pos + segs[i].t.length) return segs[i].l;
+      pos += segs[i].t.length;
+    }
+    return segs.length ? segs[segs.length - 1].l : 0;
+  }
+
   // 이전 글자와 겹치는 앞부분은 기존 강조 단계를 유지하고, 새로 붙거나 바뀐 뒷부분에만 현재 단계를 적용
   function assign(prevSegs, prevText, newText, level) {
     var p = 0, m = Math.min(prevText.length, newText.length);
     while (p < m && prevText.charAt(p) === newText.charAt(p)) p++;
-    var out = [], used = 0;
-    for (var i = 0; i < prevSegs.length && used < p; i++) {
-      var take = Math.min(prevSegs[i].t.length, p - used);
-      out.push({ t: prevSegs[i].t.slice(0, take), l: prevSegs[i].l });
-      used += take;
-    }
+    var out = sliceSegs(prevSegs, 0, p);
     if (newText.length > p) out.push({ t: newText.slice(p), l: level });
     return mergeSegs(out);
   }
@@ -440,18 +669,37 @@
     });
   }
 
-  function addFinalLine(segs) {
+  // 문장부호 뒤에서 줄 나누기
+  function splitSentences(segs) {
+    if (!polish.punct) return [segs];
+    var text = segsText(segs);
+    var cuts = [], re = /[.?!]\s+/g, m;
+    while ((m = re.exec(text))) cuts.push(m.index + 1);
+    if (!cuts.length) return [segs];
+    var pieces = [], start = 0;
+    cuts.forEach(function (c) { pieces.push(sliceSegs(segs, start, c)); start = c; });
+    pieces.push(sliceSegs(segs, start, text.length));
+    return pieces;
+  }
+
+  function appendLine(segs) {
     segs = trimSegs(segs);
     if (!segs.length) return;
     if (hintEl) { hintEl.remove(); hintEl = null; }
+    var entry = { segs: segs, edited: false };
     var d = document.createElement("div");
     d.className = "line";
+    d._entry = entry;
     renderSegs(d, segs);
     if (interimEl && interimEl.parentNode) captionsEl.insertBefore(d, interimEl);
     else captionsEl.appendChild(d);
-    transcript.push(segs);
-    var lines = captionsEl.querySelectorAll(".line");
-    while (lines.length > MAX_LINES) { lines[0].remove(); lines = captionsEl.querySelectorAll(".line"); }
+    transcript.push(entry);
+    var lines = captionsEl.querySelectorAll(".line:not(.interim)");
+    if (lines.length > MAX_LINES) lines[0].remove();
+  }
+
+  function addFinal(segs) {
+    splitSentences(trimSegs(segs)).forEach(appendLine);
     markRecent();
   }
 
@@ -494,17 +742,18 @@
         var res = e.results[i];
         var txt = res[0].transcript;
         if (res.isFinal) {
-          var fin = assign(interimSegs, interimText, txt, lvl);
+          var fin = assign(interimSegs, interimText, processText(txt, true), lvl);
           interimText = ""; interimSegs = [];
           if (interimEl) { interimEl.remove(); interimEl = null; }
-          addFinalLine(fin);
+          addFinal(fin);
         } else {
           pending += txt;
         }
       }
       if (pending) {
-        interimSegs = assign(interimSegs, interimText, pending, lvl);
-        interimText = pending;
+        var p = processText(pending, false);
+        interimSegs = assign(interimSegs, interimText, p, lvl);
+        interimText = p;
       } else {
         interimSegs = []; interimText = "";
       }
@@ -567,6 +816,148 @@
 
   toggleBtn.addEventListener("click", function () { running ? stop() : start(); });
 
+  /* =====================================================
+   *  자막 고치기 (줄을 눌러 수정 + 사전에 자동 추가)
+   * ===================================================== */
+  var editText = document.getElementById("editText");
+  var learnChk = document.getElementById("learnChk");
+  var learnText = document.getElementById("learnText");
+  var editingEl = null;
+  var editOrig = "";
+  var pendingRule = null;
+
+  function stripPunct(s) { return s.replace(/[.?!,~…:;]+$/, ""); }
+
+  // 바뀐 부분을 낱말 단위로 넓혀서 "틀린말 => 바른말" 규칙을 만듦
+  function computeRule(oldT, newT) {
+    if (oldT === newT) return null;
+    var p = 0, m = Math.min(oldT.length, newT.length);
+    while (p < m && oldT.charAt(p) === newT.charAt(p)) p++;
+    var s = 0, ms = Math.min(oldT.length, newT.length) - p;
+    while (s < ms && oldT.charAt(oldT.length - 1 - s) === newT.charAt(newT.length - 1 - s)) s++;
+    var a = p;
+    while (a > 0 && !/\s/.test(oldT.charAt(a - 1))) a--;
+    var eo = oldT.length - s, en = newT.length - s;
+    while (eo < oldT.length && !/\s/.test(oldT.charAt(eo))) { eo++; en++; }
+    var from = stripPunct(oldT.slice(a, eo).trim());
+    var to = stripPunct(newT.slice(a, en).trim());
+    if (!from) return { skip: "새로 끼워 넣은 내용이라 사전에 추가하지 않습니다." };
+    if (from === to) return null;
+    if (Array.from(from.replace(/\s+/g, "")).length < 2) {
+      return { skip: "바뀐 부분이 너무 짧아서 사전에 추가하지 않습니다. (다른 곳까지 잘못 바뀔 수 있어요)" };
+    }
+    if (from.indexOf("=>") >= 0 || to.indexOf("=>") >= 0) return null;
+    return { from: from, to: to };
+  }
+
+  function updateLearnPreview() {
+    var r = computeRule(editOrig, editText.value.replace(/\s*\n\s*/g, " ").trim());
+    pendingRule = null;
+    learnText.textContent = "";
+    if (!r) {
+      learnChk.disabled = true;
+      learnText.className = "off";
+      learnText.textContent = "사전에 추가할 변경 내용이 없습니다.";
+    } else if (r.skip) {
+      learnChk.disabled = true;
+      learnText.className = "off";
+      learnText.textContent = r.skip;
+    } else {
+      pendingRule = r;
+      learnChk.disabled = false;
+      learnText.className = "";
+      learnText.appendChild(document.createTextNode("용어 사전에 추가: "));
+      var b1 = document.createElement("b"); b1.textContent = "“" + r.from + "”";
+      var b2 = document.createElement("b"); b2.textContent = "“" + r.to + "”";
+      learnText.appendChild(b1);
+      learnText.appendChild(document.createTextNode(" → "));
+      learnText.appendChild(b2);
+      learnText.appendChild(document.createTextNode(" (다음부터 자동으로 고칩니다)"));
+    }
+  }
+
+  function openEdit(lineEl) {
+    editingEl = lineEl;
+    editOrig = segsText(lineEl._entry.segs);
+    editText.value = editOrig;
+    learnChk.checked = true;
+    closePanels();
+    editModal.classList.remove("hidden");
+    showControls(true);
+    updateLearnPreview();
+    editText.focus();
+    var n = editText.value.length;
+    try { editText.setSelectionRange(n, n); } catch (e) {}
+  }
+
+  function closeEdit() {
+    editModal.classList.add("hidden");
+    editingEl = null;
+    pendingRule = null;
+    scheduleHide();
+  }
+
+  function addRuleToDict(rule) {
+    var lines = polish.dict ? polish.dict.split(/\r?\n/) : [];
+    var key = rule.from.replace(/\s+/g, "");
+    // 같은 "틀린말" 규칙이 있으면 새 내용으로 교체
+    lines = lines.filter(function (l) {
+      var t = l.trim();
+      if (!t || t.charAt(0) === "#") return true;
+      var r = parseRuleLine(t);
+      return !(r.arrow && r.from.replace(/\s+/g, "") === key);
+    });
+    while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+    lines.push(rule.from + " => " + rule.to);
+    polish.dict = lines.join("\n");
+    document.getElementById("dictText").value = polish.dict;
+    savePolish();
+    buildDict();
+  }
+
+  function saveEdit() {
+    if (!editingEl) { closeEdit(); return; }
+    var newT = editText.value.replace(/\s*\n\s*/g, " ").trim();
+    var entry = editingEl._entry;
+    if (!newT) {
+      // 내용을 모두 지우면 그 줄을 삭제
+      var idx = transcript.indexOf(entry);
+      if (idx >= 0) transcript.splice(idx, 1);
+      editingEl.remove();
+      markRecent();
+    } else if (newT !== editOrig) {
+      var oldT = editOrig;
+      var p = 0, m = Math.min(oldT.length, newT.length);
+      while (p < m && oldT.charAt(p) === newT.charAt(p)) p++;
+      var s = 0, ms = m - p;
+      while (s < ms && oldT.charAt(oldT.length - 1 - s) === newT.charAt(newT.length - 1 - s)) s++;
+      var lvl = levelAt(entry.segs, p);
+      var segs = sliceSegs(entry.segs, 0, p);
+      segs.push({ t: newT.slice(p, newT.length - s), l: lvl });
+      segs = segs.concat(sliceSegs(entry.segs, oldT.length - s, oldT.length));
+      entry.segs = mergeSegs(segs);
+      entry.edited = true;
+      renderSegs(editingEl, entry.segs);
+      editingEl.classList.add("edited");
+      if (pendingRule && learnChk.checked && !learnChk.disabled) addRuleToDict(pendingRule);
+    }
+    closeEdit();
+  }
+
+  captionsEl.addEventListener("click", function (e) {
+    var el = e.target.closest ? e.target.closest(".line") : null;
+    if (!el || el.classList.contains("interim") || !el._entry) return;
+    openEdit(el);
+  });
+  editText.addEventListener("input", updateLearnPreview);
+  editText.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); saveEdit(); }
+    else if (e.key === "Escape") { e.preventDefault(); closeEdit(); }
+  });
+  document.getElementById("editSave").addEventListener("click", saveEdit);
+  document.getElementById("editCancel").addEventListener("click", closeEdit);
+  editModal.addEventListener("click", function (e) { if (e.target === editModal) closeEdit(); });
+
   /* ---------- 화면 꺼짐 방지 ---------- */
   function requestWakeLock() {
     if (!("wakeLock" in navigator)) return;
@@ -580,6 +971,11 @@
   });
 
   /* ---------- 컨트롤 자동 숨김 ---------- */
+  function anyOpen() {
+    return !panelEl.classList.contains("hidden") ||
+           !dictPanel.classList.contains("hidden") ||
+           !editModal.classList.contains("hidden");
+  }
   function showControls(keep) {
     controlsEl.classList.remove("hidden");
     clearTimeout(hideTimer);
@@ -588,11 +984,11 @@
   function scheduleHide() {
     clearTimeout(hideTimer);
     hideTimer = setTimeout(function () {
-      if (running && panelEl.classList.contains("hidden")) controlsEl.classList.add("hidden");
+      if (running && !anyOpen()) controlsEl.classList.add("hidden");
     }, 5000);
   }
   ["pointerdown", "mousemove", "touchstart"].forEach(function (ev) {
-    document.addEventListener(ev, function () { showControls(false); }, { passive: true });
+    document.addEventListener(ev, function () { showControls(anyOpen()); }, { passive: true });
   });
 
   /* ---------- 글자 크기 / 색상 ---------- */
@@ -627,6 +1023,21 @@
   } catch (e) {}
   applyFont(); applyTheme();
 
+  /* ---------- 패널 열고 닫기 ---------- */
+  function closePanels() {
+    panelEl.classList.add("hidden");
+    dictPanel.classList.add("hidden");
+  }
+  function togglePanel(p) {
+    var willOpen = p.classList.contains("hidden");
+    closePanels();
+    if (willOpen) p.classList.remove("hidden");
+    showControls(anyOpen());
+    if (willOpen) updateMeter();
+  }
+  document.getElementById("empBtn").addEventListener("click", function () { togglePanel(panelEl); });
+  document.getElementById("dictBtn").addEventListener("click", function () { togglePanel(dictPanel); });
+
   /* ---------- 강조 설정 패널 ---------- */
   var empToggle = document.getElementById("empToggle");
   var volDeltaEl = document.getElementById("volDelta");
@@ -650,11 +1061,6 @@
   volDeltaEl.addEventListener("input", function () { emp.volDelta = parseFloat(volDeltaEl.value); syncEmpUI(); saveEmp(); });
   pitchDeltaEl.addEventListener("input", function () { emp.pitchDelta = parseFloat(pitchDeltaEl.value); syncEmpUI(); saveEmp(); });
 
-  document.getElementById("empBtn").addEventListener("click", function () {
-    panelEl.classList.toggle("hidden");
-    showControls(!panelEl.classList.contains("hidden"));
-  });
-
   function updateMeter() {
     if (panelEl.classList.contains("hidden")) return;
     var pct = Math.max(0, Math.min(100, (live.db + 60) / 60 * 100));
@@ -668,6 +1074,32 @@
     else lvlText.textContent = names[live.level];
   }
 
+  /* ---------- 자막 다듬기 패널 ---------- */
+  var punctToggle = document.getElementById("punctToggle");
+  var dictTextEl = document.getElementById("dictText");
+  var dictTimer = null;
+
+  function syncPolishUI() {
+    punctToggle.textContent = polish.punct ? "문장 나누기·문장부호 켜짐" : "문장 나누기·문장부호 꺼짐";
+    punctToggle.className = polish.punct ? "on" : "";
+  }
+  loadPolish();
+  dictTextEl.value = polish.dict;
+  buildDict();
+  syncPolishUI();
+
+  punctToggle.addEventListener("click", function () {
+    polish.punct = !polish.punct; syncPolishUI(); savePolish();
+  });
+  dictTextEl.addEventListener("input", function () {
+    clearTimeout(dictTimer);
+    dictTimer = setTimeout(function () {
+      polish.dict = dictTextEl.value;
+      savePolish();
+      buildDict();
+    }, 300);
+  });
+
   /* ---------- 지우기 / 저장 / 전체화면 ---------- */
   document.getElementById("clear").addEventListener("click", function () {
     if (!confirm("화면의 자막을 모두 지울까요?")) return;
@@ -679,10 +1111,10 @@
   document.getElementById("save").addEventListener("click", function () {
     if (!transcript.length) { alert("저장할 자막이 없습니다."); return; }
     // 강조된 부분은 【 】로 표시. UTF-8 BOM을 붙여 메모장 등에서도 한글이 깨지지 않게 함
-    var text = transcript.map(function (segs) {
-      return segs.map(function (s) { return s.l > 0 ? "【" + s.t + "】" : s.t; }).join("");
+    var text = transcript.map(function (entry) {
+      return entry.segs.map(function (s) { return s.l > 0 ? "【" + s.t + "】" : s.t; }).join("");
     }).join("\n");
-    var blob = new Blob(["\uFEFF" + text], { type: "text/plain;charset=utf-8" });
+    var blob = new Blob(["﻿" + text], { type: "text/plain;charset=utf-8" });
     var a = document.createElement("a");
     var d = new Date();
     var p = function (n) { return String(n).padStart(2, "0"); };
